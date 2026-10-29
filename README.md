@@ -175,6 +175,12 @@ wax rm tree          # shorthand
 # Check for outdated packages
 wax outdated
 
+# Check installed formulae for known CVEs (Homebrew advisory database)
+wax vulns                     # all installed formulae; exits 1 if any are open
+wax vulns openssl@3 curl      # specific formulae
+wax vulns --severity high     # only high/critical
+wax vulns --json              # machine-readable, for CI
+
 # Upgrade packages (auto-detects formulae or casks)
 wax upgrade              # upgrade all outdated packages
 wax upgrade nginx        # upgrade specific package

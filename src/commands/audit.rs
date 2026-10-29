@@ -1,8 +1,67 @@
+use crate::advisory::{self, AdvisoryStore, Freshness, PackageReport, Severity};
 use crate::cache::Cache;
 use crate::error::Result;
 use crate::version::is_same_or_newer;
 use console::style;
 use std::collections::HashMap;
+
+fn severity_breakdown(pkg: &PackageReport) -> String {
+    let mut counts: Vec<(Option<Severity>, usize)> = Vec::new();
+    for open in &pkg.open {
+        match counts
+            .iter_mut()
+            .find(|(s, _)| *s == open.advisory.severity)
+        {
+            Some((_, n)) => *n += 1,
+            None => counts.push((open.advisory.severity, 1)),
+        }
+    }
+    counts
+        .iter()
+        .map(|(s, n)| format!("{n} {}", s.map_or("unrated", Severity::as_str)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn print_vulnerable(vulnerable: &[&PackageReport]) {
+    if vulnerable.is_empty() {
+        return;
+    }
+    println!(
+        "\n{} {} vulnerable {}:",
+        style("✗").red().bold(),
+        vulnerable.len(),
+        if vulnerable.len() == 1 {
+            "package"
+        } else {
+            "packages"
+        }
+    );
+    for pkg in vulnerable {
+        let fix = match pkg.upgrade_target() {
+            Some(version) => format!("→ {}", style(version).green()),
+            None => style("no fix available").dim().to_string(),
+        };
+        println!(
+            "  {} {}  {}  {}",
+            style(&pkg.name).red(),
+            style(format!("@{}", pkg.version)).dim(),
+            style(format!(
+                "{} {} ({})",
+                pkg.open.len(),
+                if pkg.open.len() == 1 {
+                    "advisory"
+                } else {
+                    "advisories"
+                },
+                severity_breakdown(pkg)
+            ))
+            .dim(),
+            fix
+        );
+    }
+    println!("  {}", style("run `wax vulns` for details").dim());
+}
 
 fn print_disabled(disabled: &[(&str, &str, &str)]) {
     if disabled.is_empty() {
@@ -144,7 +203,31 @@ pub async fn audit(cache: &Cache) -> Result<()> {
         }
     }
 
-    let total_issues = disabled.len() + deprecated.len();
+    let scan = AdvisoryStore::new(cache)
+        .load(Freshness::IfStale, true)
+        .await
+        .and_then(|db| {
+            advisory::scan(
+                &db,
+                installed
+                    .iter()
+                    .map(|(name, pkg)| (name.as_str(), pkg.version.as_str())),
+            )
+        });
+    let scan = match scan {
+        Ok(scan) => Some(scan),
+        Err(e) => {
+            eprintln!(
+                "  {} could not check security advisories: {}",
+                style("!").yellow(),
+                e
+            );
+            None
+        }
+    };
+    let vulnerable: Vec<&PackageReport> = scan.iter().flat_map(|s| s.vulnerable()).collect();
+
+    let total_issues = vulnerable.len() + disabled.len() + deprecated.len();
 
     if total_issues == 0 && outdated.is_empty() && unknown.is_empty() {
         println!(
@@ -155,6 +238,7 @@ pub async fn audit(cache: &Cache) -> Result<()> {
         return Ok(());
     }
 
+    print_vulnerable(&vulnerable);
     print_disabled(&disabled);
     print_deprecated(&deprecated);
     print_outdated(&outdated);

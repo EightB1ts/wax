@@ -127,6 +127,7 @@ fn subcommand_help_exits_zero() {
         "upgrade",
         "uninstall",
         "tap",
+        "vulns",
     ] {
         let out = wax().args([sub, "--help"]).output().unwrap();
         assert!(
@@ -135,6 +136,25 @@ fn subcommand_help_exits_zero() {
             out.status.code()
         );
     }
+}
+
+#[test]
+fn vulns_help_mentions_severity_and_json() {
+    let out = wax().args(["vulns", "--help"]).output().unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("--severity"), "{stdout}");
+    assert!(stdout.contains("--json"), "{stdout}");
+    assert!(stdout.contains("critical"), "{stdout}");
+}
+
+#[test]
+fn vulns_rejects_unknown_severity() {
+    let out = wax()
+        .args(["vulns", "--severity", "severe"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
 }
 
 #[test]

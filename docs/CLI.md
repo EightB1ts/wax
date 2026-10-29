@@ -448,10 +448,51 @@ Installed taps:
   user/custom (https://github.com/user/homebrew-custom.git)
 ```
 
+### vulns
+
+Check installed formulae against the [Homebrew advisory database](https://github.com/Homebrew/advisory-database) (OSV records, served as one index from `https://formulae.brew.sh/api/advisories.json`).
+
+```bash
+wax vulns [FORMULAE...] [OPTIONS]
+```
+
+**Arguments:**
+- `[FORMULAE...]`: Installed formulae to check (default: all installed)
+
+**Options:**
+
+`--severity <low|medium|high|critical>`
+Only report advisories at or above this severity. Unrated advisories are dropped.
+
+`--json`
+Print results as JSON (`checked`, `advisory_count`, `vulnerable`, `patched`, `skipped`).
+
+**Behavior:**
+1. Downloads the advisory index on first use (~14MB gzipped) and compacts it into `advisories.bin` in the cache directory
+2. Reuses the cached index for 24 hours; `wax update` revalidates it (ETag, so unchanged data costs one 304)
+3. Compares each installed keg version (including `_N` revisions) against the advisory ranges
+4. Severity comes from CVSS v3 vectors, as in `brew vulns`; advisories with only CVSS v4 vectors show as unknown
+5. Exits `1` when any open advisory remains, so it can gate CI
+
+Coverage is homebrew-core formulae only; casks and third-party taps are not in the database. `wax audit` includes a one-line-per-package summary of the same results.
+
+**Output:**
+```
+✗ 1 vulnerable package · 1 advisory
+
+  hermes-agent 0.22.0  → 0.22.4
+    MEDIUM   CVE-2026-102275  PyJWT accepts inconsistent OKP x/d JWKs, causing public/private key… (via pyjwt)
+
+✓ 2 advisories resolved by Homebrew patches
+
+→ wax upgrade hermes-agent
+64 formulae checked against 14699 advisories
+```
+
 ## Exit Codes
 
 - `0`: Success
-- `1`: General error
+- `1`: General error, or `wax vulns` found open advisories
 - `2`: Command-line usage error
 - Other: Specific error codes (future)
 

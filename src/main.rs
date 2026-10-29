@@ -1,4 +1,5 @@
 mod adopt;
+mod advisory;
 mod api;
 mod bottle;
 mod builder;
@@ -64,6 +65,7 @@ fn command_prints_timing(command: &Commands) -> bool {
             | Commands::Upgrade { .. }
             | Commands::Outdated { .. }
             | Commands::Sync
+            | Commands::Vulns { .. }
     )
 }
 
@@ -424,8 +426,24 @@ enum Commands {
         formula: String,
     },
 
-    #[command(about = "Check installed packages for issues (deprecated, disabled, outdated)")]
+    #[command(
+        about = "Check installed packages for issues (vulnerable, deprecated, disabled, outdated)"
+    )]
     Audit,
+
+    #[command(about = "Check installed formulae for known vulnerabilities (CVEs)")]
+    Vulns {
+        #[arg(help = "Formulae to check (default: all installed)")]
+        formulae: Vec<String>,
+        #[arg(
+            long,
+            value_enum,
+            help = "Only report advisories at or above this severity"
+        )]
+        severity: Option<advisory::Severity>,
+        #[arg(long, help = "Print results as JSON")]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -549,6 +567,8 @@ fn print_error_and_exit(err: error::WaxError) -> ! {
         WaxError::InstallError(message) => {
             eprintln!("{} {}", prefix, message);
         }
+        // The report has already been printed; only the exit status remains.
+        WaxError::VulnerabilitiesFound(_) => {}
         other => {
             eprintln!("{} {}", prefix, other);
         }
@@ -923,6 +943,15 @@ async fn execute_command(command: Commands, cache: &Cache, yes: bool) -> Result<
             #[cfg(target_os = "windows")]
             crate::error::reject_homebrew_cli("audit")?;
             commands::audit::audit(cache).await
+        }
+        Commands::Vulns {
+            formulae,
+            severity,
+            json,
+        } => {
+            #[cfg(target_os = "windows")]
+            crate::error::reject_homebrew_cli("vulns")?;
+            commands::vulns::vulns(cache, &formulae, severity, json).await
         }
     }
 }

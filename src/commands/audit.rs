@@ -1,27 +1,9 @@
-use crate::advisory::{self, AdvisoryStore, Freshness, PackageReport, Severity};
+use crate::advisory::{self, AdvisoryStore, Freshness, PackageReport};
 use crate::cache::Cache;
 use crate::error::Result;
 use crate::version::is_same_or_newer;
 use console::style;
 use std::collections::HashMap;
-
-fn severity_breakdown(pkg: &PackageReport) -> String {
-    let mut counts: Vec<(Option<Severity>, usize)> = Vec::new();
-    for open in &pkg.open {
-        match counts
-            .iter_mut()
-            .find(|(s, _)| *s == open.advisory.severity)
-        {
-            Some((_, n)) => *n += 1,
-            None => counts.push((open.advisory.severity, 1)),
-        }
-    }
-    counts
-        .iter()
-        .map(|(s, n)| format!("{n} {}", s.map_or("unrated", Severity::as_str)))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
 
 fn print_vulnerable(vulnerable: &[&PackageReport]) {
     if vulnerable.is_empty() {
@@ -54,7 +36,7 @@ fn print_vulnerable(vulnerable: &[&PackageReport]) {
                 } else {
                     "advisories"
                 },
-                severity_breakdown(pkg)
+                pkg.severity_summary()
             ))
             .dim(),
             fix

@@ -158,6 +158,34 @@ fn vulns_rejects_unknown_severity() {
 }
 
 #[test]
+fn upgrade_and_outdated_help_mention_vulnerable() {
+    for sub in ["upgrade", "outdated"] {
+        let out = wax().args([sub, "--help"]).output().unwrap();
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(stdout.contains("--vulnerable"), "{sub}: {stdout}");
+        assert!(stdout.contains("--severity"), "{sub}: {stdout}");
+    }
+}
+
+#[test]
+fn severity_requires_vulnerable_and_vulnerable_rejects_self() {
+    for args in [
+        &["upgrade", "--severity", "high"][..],
+        &["outdated", "--severity", "high"][..],
+        &["upgrade", "--vulnerable", "--self"][..],
+        &["upgrade", "--vulnerable", "--system"][..],
+    ] {
+        let out = wax().args(args).output().unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "wax {args:?} should be a usage error"
+        );
+    }
+}
+
+#[test]
 fn doctor_help_mentions_full_flag() {
     let out = wax().args(["doctor", "--help"]).output().unwrap();
     assert!(out.status.success());

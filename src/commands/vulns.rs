@@ -3,15 +3,17 @@ use crate::advisory::{
 };
 use crate::cache::Cache;
 use crate::error::{Result, WaxError};
+use crate::install::{InstallMode, InstalledPackage};
 use crate::ui::elapsed_suffix;
 use console::style;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tracing::instrument;
 
 const SUMMARY_WIDTH: usize = 72;
 
-fn plural<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
+pub(crate) fn plural<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
     if count == 1 {
         one
     } else {
@@ -141,7 +143,7 @@ fn print_report(report: &ScanReport, advisory_count: u64, elapsed: Duration) {
             println!(
                 "\n{} {}",
                 style("→").cyan(),
-                style(format!("wax upgrade {}", fixable.join(" "))).bold()
+                style(format!("wax upgrade --vulnerable {}", fixable.join(" "))).bold()
             );
         }
         println!("{}{}", checked, elapsed_suffix(elapsed));
@@ -224,6 +226,35 @@ fn json_report(report: &ScanReport, advisory_count: u64) -> JsonReport<'_> {
     }
 }
 
+/// `(name, version)` for the named installed formulae, or all of them, limited
+/// to `scope` when given.
+pub(crate) fn select_formulae<'a>(
+    installed: &'a HashMap<String, InstalledPackage>,
+    names: &[String],
+    scope: Option<InstallMode>,
+) -> Result<Vec<(&'a str, &'a str)>> {
+    let mut selected: Vec<(&str, &str)> = if names.is_empty() {
+        installed
+            .iter()
+            .filter(|(_, pkg)| scope.is_none_or(|mode| pkg.install_mode == mode))
+            .map(|(name, pkg)| (name.as_str(), pkg.version.as_str()))
+            .collect()
+    } else {
+        names
+            .iter()
+            .map(|name| {
+                installed
+                    .get_key_value(name)
+                    .map(|(name, pkg)| (name.as_str(), pkg.version.as_str()))
+                    .ok_or_else(|| WaxError::NotInstalled(name.clone()))
+            })
+            .collect::<Result<_>>()?
+    };
+    selected.sort_unstable();
+    selected.dedup();
+    Ok(selected)
+}
+
 /// Check installed formulae against the Homebrew advisory database. Exits
 /// non-zero when any open advisory remains, so it can gate CI.
 #[instrument(skip(cache))]
@@ -242,24 +273,7 @@ pub async fn vulns(
     let installed = installed?;
     let db = db?;
 
-    let mut selected: Vec<(&str, &str)> = if formulae.is_empty() {
-        installed
-            .iter()
-            .map(|(name, pkg)| (name.as_str(), pkg.version.as_str()))
-            .collect()
-    } else {
-        formulae
-            .iter()
-            .map(|name| {
-                installed
-                    .get_key_value(name)
-                    .map(|(name, pkg)| (name.as_str(), pkg.version.as_str()))
-                    .ok_or_else(|| WaxError::NotInstalled(name.clone()))
-            })
-            .collect::<Result<_>>()?
-    };
-    selected.sort_unstable();
-    selected.dedup();
+    let selected = select_formulae(&installed, formulae, None)?;
 
     let mut report = advisory::scan(&db, selected)?;
     if let Some(min) = min_severity {

@@ -296,11 +296,30 @@ wax up <name> [OPTIONS]         # Shorthand
 `--dry-run`
 Show what would be upgraded without making changes.
 
+`--vulnerable`
+Only upgrade formulae whose available version fixes an open security advisory (see [`vulns`](#vulns)). Each candidate's new version is checked against the same advisories first, so an upgrade that would leave every finding open is reported instead of run. Pinned formulae are reported with the `wax unpin` command that would let them upgrade. Advisories are always revalidated first. After upgrading, wax rescans and exits `1` if any advisories remain open.
+
+`--severity <low|medium|high|critical>`
+With `--vulnerable`: only consider advisories at or above this severity.
+
 **Examples:**
 ```bash
 wax upgrade nginx
 wax up tree --dry-run
+wax upgrade --vulnerable --dry-run          # security upgrade plan
+wax upgrade --vulnerable --severity high -y # e.g. in CI or a scheduled job
 ```
+
+**Security upgrade plan:**
+```
+→ security upgrade plan
+  ↻ lrzsz 0.12.20 → 0.13.1  fixes 1 advisory (1 high)
+
+  not upgraded:
+  · git 2.56.0_1  1 advisory (1 critical)  2.56.0_2 is still affected
+```
+
+`wax outdated --vulnerable [--severity <level>]` prints the same plan without upgrading.
 
 **Behavior:**
 1. Checks installed version
@@ -474,7 +493,7 @@ Print results as JSON (`checked`, `advisory_count`, `vulnerable`, `patched`, `sk
 4. Severity comes from CVSS v3 vectors, as in `brew vulns`; advisories with only CVSS v4 vectors show as unknown
 5. Exits `1` when any open advisory remains, so it can gate CI
 
-Coverage is homebrew-core formulae only; casks and third-party taps are not in the database. `wax audit` includes a one-line-per-package summary of the same results.
+Coverage is homebrew-core formulae only; casks and third-party taps are not in the database. `wax audit` includes a one-line-per-package summary of the same results, and `wax upgrade --vulnerable` applies the upgrades that fix them.
 
 **Output:**
 ```
@@ -485,7 +504,7 @@ Coverage is homebrew-core formulae only; casks and third-party taps are not in t
 
 ✓ 2 advisories resolved by Homebrew patches
 
-→ wax upgrade hermes-agent
+→ wax upgrade --vulnerable hermes-agent
 64 formulae checked against 14699 advisories
 ```
 

@@ -308,6 +308,19 @@ enum Commands {
         user: bool,
         #[arg(long, conflicts_with = "user")]
         global: bool,
+        #[arg(
+            long,
+            conflicts_with_all = ["upgrade_self", "system"],
+            help = "Only upgrade formulae whose available version fixes an open security advisory"
+        )]
+        vulnerable: bool,
+        #[arg(
+            long,
+            value_enum,
+            requires = "vulnerable",
+            help = "With --vulnerable: only consider advisories at or above this severity"
+        )]
+        severity: Option<advisory::Severity>,
     },
 
     #[command(about = "Manage OS-level packages via the native package manager")]
@@ -322,6 +335,18 @@ enum Commands {
         user: bool,
         #[arg(long, conflicts_with = "user")]
         global: bool,
+        #[arg(
+            long,
+            help = "Only show vulnerable formulae, and whether upgrading fixes them"
+        )]
+        vulnerable: bool,
+        #[arg(
+            long,
+            value_enum,
+            requires = "vulnerable",
+            help = "With --vulnerable: only consider advisories at or above this severity"
+        )]
+        severity: Option<advisory::Severity>,
     },
 
     #[command(about = "Re-create symlinks for installed packages  [alias: ln]")]
@@ -616,6 +641,8 @@ async fn execute_upgrade(
     system: bool,
     user: bool,
     global: bool,
+    vulnerable: bool,
+    severity: Option<advisory::Severity>,
     cache: &Cache,
     yes: bool,
 ) -> Result<()> {
@@ -626,6 +653,18 @@ async fn execute_upgrade(
 
     #[cfg(target_os = "windows")]
     crate::error::reject_homebrew_cli("upgrade")?;
+
+    if vulnerable {
+        return commands::upgrade::vulnerable::upgrade_vulnerable(
+            cache,
+            &packages,
+            severity,
+            dry_run,
+            ask && !yes,
+            install_scope(user, global)?,
+        )
+        .await;
+    }
 
     let explicit_packages_requested = !packages.is_empty();
 
@@ -841,6 +880,8 @@ async fn execute_command(command: Commands, cache: &Cache, yes: bool) -> Result<
             system,
             user,
             global,
+            vulnerable,
+            severity,
         } => {
             execute_upgrade(
                 packages,
@@ -853,16 +894,28 @@ async fn execute_command(command: Commands, cache: &Cache, yes: bool) -> Result<
                 system,
                 user,
                 global,
+                vulnerable,
+                severity,
                 cache,
                 yes,
             )
             .await
         }
         Commands::System { action } => execute_system(action).await,
-        Commands::Outdated { user, global } => {
+        Commands::Outdated {
+            user,
+            global,
+            vulnerable,
+            severity,
+        } => {
             #[cfg(target_os = "windows")]
             crate::error::reject_homebrew_cli("outdated")?;
-            commands::outdated::outdated(cache, install_scope(user, global)?).await
+            let scope = install_scope(user, global)?;
+            if vulnerable {
+                commands::upgrade::vulnerable::outdated_vulnerable(cache, severity, scope).await
+            } else {
+                commands::outdated::outdated(cache, scope).await
+            }
         }
         Commands::Link { packages } => {
             #[cfg(target_os = "windows")]

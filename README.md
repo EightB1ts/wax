@@ -180,6 +180,8 @@ wax vulns                     # all installed formulae; exits 1 if any are open
 wax vulns openssl@3 curl      # specific formulae
 wax vulns --severity high     # only high/critical
 wax vulns --json              # machine-readable, for CI
+wax outdated --vulnerable     # which upgrades actually fix them
+wax upgrade --vulnerable      # apply only those upgrades
 
 # Upgrade packages (auto-detects formulae or casks)
 wax upgrade              # upgrade all outdated packages

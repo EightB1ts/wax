@@ -692,6 +692,26 @@ impl PackageReport {
             .max_by(|a, b| BrewVersion::parse(a).cmp(&BrewVersion::parse(b)))
     }
 
+    /// Open advisory counts by severity, highest first: "1 critical, 2 medium".
+    pub fn severity_summary(&self) -> String {
+        let mut counts: Vec<(Option<Severity>, usize)> = Vec::new();
+        for open in &self.open {
+            match counts
+                .iter_mut()
+                .find(|(s, _)| *s == open.advisory.severity)
+            {
+                Some((_, n)) => *n += 1,
+                None => counts.push((open.advisory.severity, 1)),
+            }
+        }
+        counts.sort_by_key(|(s, _)| severity_rank(*s));
+        counts
+            .iter()
+            .map(|(s, n)| format!("{n} {}", s.map_or("unrated", Severity::as_str)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
     /// Keep only open advisories at or above `min`; unrated ones are dropped,
     /// as `brew vulns --severity` does.
     pub fn retain_min_severity(&mut self, min: Severity) {
@@ -980,17 +1000,25 @@ impl AdvisoryStore {
 }
 
 #[cfg(test)]
+const TEST_FIXTURE: &str = include_str!("../tests/fixtures/advisories_sample.json");
+
+/// The fixture index (abcde, abi3audit, hermes-agent, lrzsz) for other modules' tests.
+#[cfg(test)]
+pub(crate) fn test_db() -> AdvisoryDb {
+    let index = build_index(TEST_FIXTURE.as_bytes()).expect("fixture parses");
+    AdvisoryDb::from_bytes(encode(&index).unwrap()).unwrap()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    const FIXTURE: &str = include_str!("../tests/fixtures/advisories_sample.json");
-
     fn fixture_index() -> BTreeMap<String, Vec<Advisory>> {
-        build_index(FIXTURE.as_bytes()).expect("fixture parses")
+        build_index(TEST_FIXTURE.as_bytes()).expect("fixture parses")
     }
 
     fn fixture_db() -> AdvisoryDb {
-        AdvisoryDb::from_bytes(encode(&fixture_index()).unwrap()).unwrap()
+        test_db()
     }
 
     fn advisory_with(events: &[(&str, &str)]) -> Advisory {
